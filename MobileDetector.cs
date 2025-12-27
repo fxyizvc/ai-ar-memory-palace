@@ -1,84 +1,88 @@
 using UnityEngine;
-using Unity.Sentis; // The AI Engine
+
 using UnityEngine.UI;
-using UnityEngine.Android; // For Permissions
-using System.Collections; // For GPS Coroutine
+using UnityEngine.Networking;
+using System.Collections;
+using System.Threading.Tasks;
+using GLTFast; // Make sure this package is installed!
 
 public class MobileDetector : MonoBehaviour
 {
-    [Header("UI & Model Setup")]
-    public ModelAsset modelAsset;      // Drag 'best.onnx' here
-    public Text statusText;            // Drag your Text (Legacy) here
-    public RawImage cameraView;        // Drag your RawImage here
+    [Header("UI & Scene Setup")]
+    public Unity.InferenceEngine.ModelAsset modelAsset;      // Drag your .onnx file here
+    public RawImage cameraView;        // Drag your CameraView (RawImage) here
+    public Text statusText;            // Drag your Status Text here
+    public Transform modelHolder;      // Drag your 'ModelHolder' object here
+
+    [Header("Settings")]
+    public bool flipX = false; // Try checking this if Left/Right is wrong
+    public bool flipY = false; // Try checking this if Up/Down is wrong
+    public bool swapXY = false; // Try this if moving Up makes the card move Right
+    [Range(0.0f, 1.0f)] public float confidenceThreshold = 0.90f; // 90% Confidence
+    public int skipFrames = 15;        // Run AI every 15 frames to stop lag
+    public float modelScale = 300f;    // SCALE MULTIPLIER (Increase if model is invisible)
 
     // --- INTERNAL VARIABLES ---
-    private Model runtimeModel;
-    private Worker worker;
+    private Unity.InferenceEngine.Model runtimeModel;
+    private Unity.InferenceEngine.Worker worker;
     private WebCamTexture webcam;
-    private Tensor<float> inputTensor;
+    private Unity.InferenceEngine.Tensor<float> inputTensor;
+    private GameObject loadedGlbObject;
+    private int frameCount = 0;
     
-    // GPS Variables
-    private string gpsLocation = "GPS Initializing...";
-    private bool isGpsReady = false;
-
-    // Constants
+    // YOLO Constants
     const int ModelSize = 640; 
-    const int NumAnchors = 8400; // Standard for YOLOv8
+    const int NumAnchors = 8400;
 
-    void Start()
+    async void Start()
     {
         // 1. Start Camera
         webcam = new WebCamTexture(640, 480);
         cameraView.texture = webcam;
         webcam.Play();
 
-        // 2. Load AI Model
-        runtimeModel = ModelLoader.Load(modelAsset);
-        worker = new Worker(runtimeModel, BackendType.GPUCompute);
-        inputTensor = new Tensor<float>(new TensorShape(1, 3, ModelSize, ModelSize));
+        // 2. Load AI Brain
+        runtimeModel = Unity.InferenceEngine.ModelLoader.Load(modelAsset);
+        worker = new Unity.InferenceEngine.Worker(runtimeModel, Unity.InferenceEngine.BackendType.GPUCompute);
+        inputTensor = new Unity.InferenceEngine.Tensor<float>(new Unity.InferenceEngine.TensorShape(1, 3, ModelSize, ModelSize));
 
-        // 3. Start GPS Service (Runs in background)
-        StartCoroutine(StartLocationService());
-    }
+        // 3. Download 3D Model from Drive
+        // PASTE YOUR DIRECT GOOGLE DRIVE LINK HERE
+        string glbUrl = "https://drive.google.com/uc?export=download&id=1P8UmIOCM5u-0D_j4MCqli3W9BmNHYiX0";
+        
+        statusText.text = "Downloading 3D Model...";
+        statusText.color = Color.cyan;
 
-    // --- GPS SETUP ROUTINE ---
-    IEnumerator StartLocationService()
-    {
-        // A. Ask for Permission
-        if (!Permission.HasUserAuthorizedPermission(Permission.FineLocation))
+        var gltf = new GltfImport();
+        // Download and parse the GLB
+        bool success = await gltf.Load(glbUrl);
+
+        if (success)
         {
-            Permission.RequestUserPermission(Permission.FineLocation);
-            yield return new WaitForSeconds(1.5f); // Give user time to click 'Allow'
-        }
+            // Create a wrapper object
+            loadedGlbObject = new GameObject("FlashcardGLB");
+            loadedGlbObject.transform.SetParent(modelHolder, false); 
+            
+            // Spawn the actual model inside the wrapper
+            await gltf.InstantiateMainSceneAsync(loadedGlbObject.transform);
+            
+            // --- CRITICAL FIXES ---
+            // 1. Scale it up massively (UI Pixels vs Meters)
+            loadedGlbObject.transform.localScale = Vector3.one * modelScale;
+            
+            // 2. Fix Rotation (Spin it around if needed)
+            loadedGlbObject.transform.localEulerAngles = new Vector3(0, 180, 0);
 
-        // B. Check if User Enabled Location
-        if (!Input.location.isEnabledByUser)
-        {
-            gpsLocation = "GPS Disabled in Settings";
-            isGpsReady = false;
-            yield break;
-        }
-
-        // C. Start Service
-        Input.location.Start(10f, 10f); // Accuracy: 10 meters
-
-        // D. Wait for Initialization (Max 20 seconds)
-        int maxWait = 20;
-        while (Input.location.status == LocationServiceStatus.Initializing && maxWait > 0)
-        {
-            yield return new WaitForSeconds(1);
-            maxWait--;
-        }
-
-        // E. Check Result
-        if (maxWait < 1 || Input.location.status == LocationServiceStatus.Failed)
-        {
-            gpsLocation = "GPS Connection Failed";
-            isGpsReady = false;
+            // 3. Hide it until detected
+            loadedGlbObject.SetActive(false);
+            
+            statusText.text = "Model Loaded! Searching...";
+            statusText.color = Color.white;
         }
         else
         {
-            isGpsReady = true;
+            statusText.text = "Download Failed! Check Link.";
+            statusText.color = Color.magenta;
         }
     }
 
@@ -86,71 +90,111 @@ public class MobileDetector : MonoBehaviour
     {
         if (!webcam.didUpdateThisFrame) return;
 
-        // --- 1. HANDLE ROTATION ---
+        // Visuals: Rotate camera view
         cameraView.rectTransform.localEulerAngles = new Vector3(0, 0, -webcam.videoRotationAngle);
 
-        // --- 2. UPDATE GPS STATUS ---
-        // We update this every frame so you can see coordinates change as you walk
-        if (isGpsReady && Input.location.status == LocationServiceStatus.Running)
-        {
-            float lat = Input.location.lastData.latitude;
-            float lon = Input.location.lastData.longitude;
-            float alt = Input.location.lastData.altitude;
-            gpsLocation = $"Lat: {lat:F5}\nLon: {lon:F5}\nAlt: {alt:F1}m";
-        }
-        else if (!isGpsReady)
-        {
-            // Keep showing the error/status if not ready
-            gpsLocation = $"Status: {Input.location.status}";
-        }
+        
 
-        // --- 3. RUN AI ---
-        TextureConverter.ToTensor(webcam, inputTensor, new TextureTransform());
+        // --- LAG FIX ---
+        // Only run AI logic once every 'skipFrames' (15)
+        frameCount++;
+        if (frameCount % skipFrames != 0) return;
+
+        DetectBlackboard();
+    }
+
+    void DetectBlackboard()
+    {
+        // 1. Prepare Image
+        Unity.InferenceEngine.TextureConverter.ToTensor(webcam, inputTensor, new Unity.InferenceEngine.TextureTransform());
+
+        // 2. Run AI
         worker.Schedule(inputTensor);
 
-        // --- 4. READ RESULTS ---
-        Tensor<float> output = worker.PeekOutput() as Tensor<float>;
+        // 3. Read Output
+        Unity.InferenceEngine.Tensor<float> output = worker.PeekOutput() as Unity.InferenceEngine.Tensor<float>;
         using var readable = output.ReadbackAndClone();
         float[] data = readable.DownloadToArray();
 
-        // Check 5th block (Confidences)
-        int totalValues = data.Length;
-        int offset = 4 * NumAnchors; 
+        // 4. Find Best Detection
+        // YOLO Data: [Row 0=X, Row 1=Y, ... Row 4=Confidence]
+        // Skip first 4 rows to find confidence scores
+        int offsetConf = 4 * NumAnchors; 
         
-        bool detected = false;
         float maxScore = 0f;
+        int bestIndex = -1;
 
-        if (offset < totalValues)
+        if (offsetConf < data.Length)
         {
-            for (int i = offset; i < totalValues; i++) 
+            for (int i = 0; i < NumAnchors; i++) 
             {
-                if (data[i] > 0.70f) // 70% Confidence
+                float conf = data[offsetConf + i];
+                if (conf > confidenceThreshold && conf > maxScore) 
                 {
-                    detected = true;
-                    maxScore = data[i];
-                    break; 
+                    maxScore = conf;
+                    bestIndex = i;
                 }
             }
         }
 
-        // --- 5. UPDATE UI (Now shows GPS in BOTH states) ---
-        if (detected)
+        // 5. Show/Hide Model
+        if (maxScore > confidenceThreshold && bestIndex != -1 && loadedGlbObject != null)
         {
-            statusText.text = $"✅ FOUND ({maxScore:P0})\n{gpsLocation}";
+            statusText.text = $"✅ ACTIVE ({maxScore:P0})";
             statusText.color = Color.green;
+            
+            loadedGlbObject.SetActive(true);
+
+            // Get Coordinates (Row 0 and Row 1)
+            float rawX = data[bestIndex]; 
+            float rawY = data[NumAnchors + bestIndex];
+            
+            // Normalize to 0.0 - 1.0 range
+            float normX = rawX / ModelSize;
+            float normY = rawY / ModelSize;
+
+            PositionOverlay(normX, normY);
         }
         else
         {
-            statusText.text = $"❌ SEARCHING...\n{gpsLocation}";
-            statusText.color = Color.red;
+            statusText.text = "Searching...";
+            statusText.color = Color.yellow;
+            if(loadedGlbObject != null) loadedGlbObject.SetActive(false);
         }
     }
+
+    void PositionOverlay(float x, float y)
+{
+    // 1. Handle Rotation (Swap X and Y)
+    if (swapXY) 
+    {
+        float temp = x;
+        x = y;
+        y = temp;
+    }
+
+    // 2. Handle Mirroring (Flip)
+    if (flipX) x = 1.0f - x;
+    if (flipY) y = 1.0f - y;
+
+    // 3. Map to Screen
+    RectTransform camRect = cameraView.rectTransform;
+    float width = camRect.rect.width;
+    float height = camRect.rect.height;
+
+    float screenX = (x - 0.5f) * width;
+    float screenY = -(y - 0.5f) * height; // Unity UI Y is usually inverted relative to YOLO
+
+    modelHolder.localPosition = new Vector3(0, 0, -40f);
+    // 4. Apply
+    // Keep Z at 50 to stay visible
+    // modelHolder.localPosition = new Vector3(screenX, screenY, 50f);
+}
 
     void OnDisable()
     {
         worker?.Dispose();
         inputTensor?.Dispose();
         webcam?.Stop();
-        Input.location.Stop(); // Stop GPS to save battery
     }
 }
