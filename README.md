@@ -81,6 +81,7 @@ The system operates in a continuous loop comprising four distinct stages:
 > *1. Scanning Phase (Point Cloud)*
 > *2. Detection Phase (Red Box / Confidence Score)*
 > *3. Anchoring Phase (3D Card Floating on Board)*
+![WhatsApp Image 2026-01-02 at 8 20 58 PM](https://github.com/user-attachments/assets/a5d50b51-1e1a-4221-970a-acee96317baa)
 
 ---
 
