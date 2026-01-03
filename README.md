@@ -39,7 +39,7 @@ By combining **Artificial Intelligence** with **Augmented Reality**, this applic
 
 | Component | Technology Used | Purpose |
 | :--- | :--- | :--- |
-| **Engine** | Unity 2022.3 (LTS) | Core AR/VR Development Environment |
+| **Engine** | Unity 6 | Core AR/VR Development Environment |
 | **AR Framework** | ARFoundation 5.x (ARCore) | Surface detection and motion tracking |
 | **AI Inference** | TensorFlow Lite (TFLite) | Running the `.tflite` model on Android |
 | **Vision Model** | MobileNet SSD | Object detection (Blackboard) |
