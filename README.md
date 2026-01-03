@@ -39,7 +39,7 @@ The system converts uploaded PDFs into summarized content via a Web Interface, t
 * **Storage:** Google Drive API
 
 ### AR Application (Client)
-* **Engine:** Unity 2022.3 (LTS) - Universal Render Pipeline (URP)
+* **Engine:** Unity 6 - AR Mobile
 * **AR Framework:** ARFoundation 5.x (ARCore)
 * **AI Inference:** TensorFlow Lite for Unity
 * **Computer Vision:** MobileNet SSD (Single Shot Detector)
