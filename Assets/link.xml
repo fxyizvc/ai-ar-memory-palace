@@ -1,0 +1,7 @@
+<linker>
+  <assembly fullname="MongoDB.Driver" preserve="all"/>
+  <assembly fullname="MongoDB.Bson" preserve="all"/>
+  <assembly fullname="MongoDB.Driver.Core" preserve="all"/>
+  <assembly fullname="DnsClient" preserve="all"/>
+  <assembly fullname="System.Runtime.CompilerServices.Unsafe" preserve="all"/>
+</linker>
