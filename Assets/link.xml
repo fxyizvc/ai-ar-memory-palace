@@ -2,6 +2,15 @@
   <assembly fullname="MongoDB.Driver" preserve="all"/>
   <assembly fullname="MongoDB.Bson" preserve="all"/>
   <assembly fullname="MongoDB.Driver.Core" preserve="all"/>
+  <assembly fullname="MongoDB.Libmongocrypt" preserve="all"/>
   <assembly fullname="DnsClient" preserve="all"/>
   <assembly fullname="System.Runtime.CompilerServices.Unsafe" preserve="all"/>
-</linker>
+  <assembly fullname="System.Buffers" preserve="all"/>
+  
+  <assembly fullname="mscorlib" preserve="all"/>
+  <assembly fullname="System" preserve="all"/>
+  <assembly fullname="System.Core" preserve="all"/>
+  <assembly fullname="System.Linq" preserve="all"/>
+  <assembly fullname="System.Reflection" preserve="all"/>
+  <assembly fullname="System.Net.Http" preserve="all"/>
+  <assembly fullname="System.Security" preserve="all"/> </linker>
