@@ -1,116 +1,91 @@
-# 🧠 AI AR Memory Palace (Smart Blackboard)
+# AI AR Memory Palace (Smart Blackboard)
 
-**University Major Project | B.Tech Computer Science Engineering**
+**An AI-powered Augmented Reality Educational Platform**  
+**B.Tech CSE Major Project**
 
-AI AR Memory Palace is an **AI-powered Augmented Reality learning system** that transforms physical classroom blackboards into **interactive 3D learning environments** using **On-Device Edge AI**, **Cloud Database**, and **Geo-Spatial Awareness**.
+An intelligent AR system that transforms ordinary classroom blackboards into interactive 3D learning environments using **On-Device Edge AI**, **Cloud Database**, and **GPS Geo-fencing**.
 
-This platform ensures students can access **strictly filtered, curriculum-relevant assets** (3D Models & PDF Notes) **only when they are physically inside the college campus**, improving both learning engagement and content security.
+The app ensures students can only access curriculum-relevant 3D models and notes when physically present inside their college campus.
 
----
+## ✨ Key Features
 
-## 📌 Project Overview
+- **Geo-Fenced Access Control**  
+  Real-time GPS monitoring with Haversine formula validation  
+  Scanning is disabled outside the 500m college campus radius  
+  Secure location verification using MongoDB-stored college coordinates
 
-Unlike traditional marker-based AR applications, this system uses **Edge AI-based blackboard detection** to understand classroom environments in real time.
+- **Cloud-Powered Smart Filtering**  
+  MongoDB Atlas stores subject metadata (Branch, Semester, Subject Code)  
+  Node.js/Express backend on Vercel enforces strict filtering (Branch + Semester + Subject)  
+  Prevents unauthorized access to higher-semester content
 
-The system integrates:
+- **On-Device Edge AI Blackboard Detection**  
+  Custom-trained MobileNet SSD model running locally via TensorFlow Lite  
+  Real-time blackboard detection (>30 FPS) on mobile device
 
-- ✅ Geo-Fencing (GPS Enforcement)
-- ✅ Cloud filtering through MongoDB Atlas
-- ✅ Serverless API layer (Vercel Backend)
-- ✅ 3D asset streaming in AR (GLB)
-- ✅ Secure PDF notes delivery
+- **Dual Asset Delivery**  
+  - Augmented Reality 3D Models (.glb) loaded using GLTFast  
+  - Secure PDF Notes download with auto-converted direct links from Google Drive
 
----
+- **Clean & Secure Architecture**  
+  No API keys exposed in client  
+  Serverless backend handles all database queries
 
-## 🚀 Key Features
+## 🛠️ Tech Stack
 
-### 🌍 1) Geo-Fenced Access Control (GPS Enforcement)
+| Component              | Technology                          |
+|-----------------------|-------------------------------------|
+| Game Engine           | Unity 6                             |
+| AR Framework          | AR Foundation + ARCore              |
+| AI Model              | MobileNet SSD (TensorFlow Lite)     |
+| Backend               | Node.js + Express (Vercel)          |
+| Database              | MongoDB Atlas                       |
+| 3D Model Loading      | glTFast                             |
+| Location Services     | Native GPS + Haversine Formula      |
 
-The application continuously validates the user's location before enabling scanning.
+## 📍 System Architecture & Workflow
 
-- **Location Locking:** GPS is tracked using `GPSManager.cs`
-- **Smart Validation:** Coordinates are verified against registered colleges stored in MongoDB Atlas
-- **Distance Check:** Uses the **Haversine Formula**
-- **Security Enforcement:** Scanning is disabled if the user is outside the campus radius (**500m**)
+1. **Verification Layer** → GPSManager checks user location every 10s  
+2. **Perception Layer** → AI detects blackboard and confirms subject code  
+3. **Query Layer** → Secure filtered request to `/api/find`  
+4. **Augmentation Layer** → Loads 3D model (scaled, rotated) + PDF download button
 
-✅ Result: Students can only use the AR scan feature when they are physically present inside the college zone.
+## 🚀 Project Status
 
----
+- **Current Version**: v2.0 (Cloud-Native Release)  
+- **Status**: Fully functional with GPS enforcement, MongoDB integration, and AR augmentation  
+- **Tested**: Real-time blackboard detection + location-locked content delivery
 
-### 🧠 2) Cloud "Brain" Architecture
+## 🛣️ Future Roadmap
 
-A scalable cloud architecture ensures secure and accurate delivery of academic content.
+- [ ] Multi-college support with scalable database design  
+- [ ] OCR Integration to auto-read subject code from chalkboard  
+- [ ] Professor/Admin web panel for uploading notes & 3D models  
+- [ ] Offline mode support
 
-- **MongoDB Atlas** stores:
-  - Branch (CSE, CE, ME...)
-  - Semester (S1–S8)
-  - Subject Codes
-  - Asset links (GLB + PDF)
+## 👥 Team Members
 
-- **Vercel Backend (Node.js + Express)** acts as a secure middleware:
-  - Example endpoint: `api/find.js`
-  - Handles filtered requests securely
-  - Protects database credentials
-  - Prevents unauthorized data access
+- **Muhammed Fayiz V C** (Team Lead & Primary Developer)  
+- Jagan K K  
+- Rhuthoshika K  
+- Jibin P V
 
-✅ Smart Filtering prevents mismatches like **S7 content appearing for S1 students**.
+**Department of Computer Science & Engineering**  
+**B.Tech Major Project (2025-2026)**
 
----
+## 📸 Screenshots
 
-### 👁️ 3) Edge AI Blackboard Detection
+(Add screenshots here – recommended layout)
 
-A custom-trained object detection model enables real-time blackboard recognition.
+1. GPS Location Verification Screen  
+2. Branch & Semester Smart Filtering  
+3. AI Blackboard Detection + 3D AR Model Overlay  
+4. PDF Notes Download Flow
 
-- Uses **MobileNet SSD**
-- Runs fully on-device using **TensorFlow Lite**
-- Real-time detection at **30+ FPS**
-- Detection confidence threshold: **> 60%**
+## 📝 License
 
-✅ Once a blackboard is detected, the app triggers the cloud retrieval pipeline.
-
----
-
-### 📦 4) Dual Asset Delivery (3D + Notes)
-
-This system provides **both AR visual learning and digital notes** instantly.
-
-#### 🎯 3D Augmentation
-- Streams `.glb` models directly into the AR scene using **GLTFast**
-- Auto adjustments:
-  - Scale set to **0.05x**
-  - Rotated **180°**
-  - Anchored on detected wall/plane
-
-#### 📄 PDF Notes Delivery
-- Provides a secure **download link**
-- Auto converts Google Drive "View" links → **Direct Download**
-- Avoids viewer loading issues
-
-✅ Students receive both **3D interaction + study notes** in one flow.
+This project is for academic purposes. All rights reserved.
 
 ---
 
-## 🛠️ Technical Stack
-
-| Component | Technology Used | Purpose |
-|----------|------------------|---------|
-| Engine | Unity 6 | Core AR Development |
-| AR Framework | ARFoundation (ARCore) | Tracking & Plane Detection |
-| AI Model | MobileNet SSD (TFLite) | Blackboard Object Detection |
-| Backend API | Node.js / Express (Vercel) | Serverless API + Security Layer |
-| Database | MongoDB Atlas | Colleges, Subjects, Links Storage |
-| Geo-Spatial | Native GPS Service | Location Validation |
-| 3D Runtime Loader | GLTFast | Runtime GLB Import |
-
----
-
-## ⚙️ System Workflow
-
-The system follows a secure pipeline:
-
-### ✅ Step 1 — Verification (GPS Layer)
-- `GPSManager.cs` polls location every **10 seconds**
-- Sends coordinates to the Vercel API
-- If API returns:
-```json
-{ "found": true }
+**Made with ❤️ using Unity & Edge AI**
