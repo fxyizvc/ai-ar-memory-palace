@@ -6,17 +6,13 @@ using UnityEngine.Android;
 public class GPSManager : MonoBehaviour
 {
     [Header("Dependencies")]
-    public MongoManager mongoManager; // <--- 1. ADD THIS VARIABLE
+    public MongoManager mongoManager;
 
     [Header("UI Feedback")]
     public TextMeshProUGUI statusText;
 
     public float currentLatitude = 0f;
     public float currentLongitude = 0f;
-    public bool isLocationReady = false;
-
-    // We add a flag so we don't spam the database every 2 seconds
-    private bool hasFetchedData = false; 
 
     void Start()
     {
@@ -25,20 +21,24 @@ public class GPSManager : MonoBehaviour
 
     IEnumerator StartLocationService()
     {
+        // 1. Check if User has GPS enabled on phone
         if (!Input.location.isEnabledByUser)
         {
-            statusText.text = "Error: GPS is off. Turn it on in Settings.";
+            if(statusText) statusText.text = "Error: GPS is off. Turn it on.";
             yield break;
         }
 
+        // 2. Request Permission (Android)
         if (!Permission.HasUserAuthorizedPermission(Permission.FineLocation))
         {
             Permission.RequestUserPermission(Permission.FineLocation);
             yield return new WaitForSeconds(1.0f); 
         }
 
+        // 3. Start Service
         Input.location.Start(5f, 5f); 
 
+        // 4. Wait for Initialization
         int maxWait = 20;
         while (Input.location.status == LocationServiceStatus.Initializing && maxWait > 0)
         {
@@ -46,21 +46,15 @@ public class GPSManager : MonoBehaviour
             maxWait--;
         }
 
-        if (maxWait < 1)
+        if (maxWait < 1 || Input.location.status == LocationServiceStatus.Failed)
         {
-            statusText.text = "Error: GPS timed out.";
+            if(statusText) statusText.text = "Error: GPS timed out.";
             yield break;
         }
 
-        if (Input.location.status == LocationServiceStatus.Failed)
-        {
-            statusText.text = "Error: GPS failed to start.";
-            yield break;
-        }
-
-        isLocationReady = true;
-        statusText.text = "GPS Active. Waiting for satellites...";
+        if(statusText) statusText.text = "GPS Active. Verifying location...";
         
+        // 5. Start the Continuous Loop
         StartCoroutine(UpdateCoordinates());
     }
 
@@ -74,20 +68,16 @@ public class GPSManager : MonoBehaviour
                 currentLongitude = Input.location.lastData.longitude;
                 float accuracy = Input.location.lastData.horizontalAccuracy;
 
-                // Only update text if we haven't found a college yet
-                if (!hasFetchedData) 
+                // Send coordinates to MongoManager to verify College access
+                // We do this repeatedly to allow users to walk into range
+                if (mongoManager != null)
                 {
-                    statusText.text = $"Lat: {currentLatitude}\nLon: {currentLongitude}\nAcc: {accuracy}m";
-                    
-                    // <--- 2. CALL MONGO DB HERE
-                    if (mongoManager != null && accuracy < 50f && !hasFetchedData) // Wait for good accuracy (<50m)
-                    {
-                        mongoManager.FindNearestCollege(currentLatitude, currentLongitude);
-                        hasFetchedData = true; // Stop calling it repeatedly
-                    }
+                    mongoManager.FindNearestCollege(currentLatitude, currentLongitude);
                 }
             }
-            yield return new WaitForSeconds(3.0f); 
+            
+            // Wait 10 seconds before next check to save battery/data
+            yield return new WaitForSeconds(10.0f); 
         }
     }
 }

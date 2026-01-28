@@ -6,11 +6,12 @@ using TensorFlowLite;
 using TMPro;
 using System.Collections;
 using System.Collections.Generic;
-using GLTFast;
-using UnityEngine.Networking;
 
 public class BlackboardDetector : MonoBehaviour
 {
+    [Header("Dependencies")]
+    public MongoManager mongoManager; // <--- DRAG YOUR MONGO MANAGER HERE!
+
     [Header("Model Settings")]
     public TextAsset modelFile;
 
@@ -21,17 +22,11 @@ public class BlackboardDetector : MonoBehaviour
 
     [Header("UI Interaction")]
     public GameObject selectionPanel;      
-    public TMP_Dropdown semDropdown;       
-    public TMP_Dropdown branchDropdown;    
     public TMP_InputField subjectInput;    
     
     [Header("Feedback UI")]
     public TextMeshProUGUI debugText;
     public Button scanButton;
-    public Slider downloadBar;
-
-    // REPLACE THIS WITH YOUR NEW SCRIPT URL FROM STEP 2 👇
-    private string googleScriptUrl = "https://script.google.com/macros/s/AKfycbwZ6d_8n2GUqLILrWKdaxvAoKZwp6xqjJxochxf4BZ94t99E4MCpWbDItv40yo3gjXh/exec";
 
     // AI Variables
     private Interpreter interpreter;
@@ -44,6 +39,7 @@ public class BlackboardDetector : MonoBehaviour
 
     void Start()
     {
+        // Initialize TensorFlow Lite
         try {
             var options = new InterpreterOptions();
             options.threads = 2;
@@ -52,41 +48,46 @@ public class BlackboardDetector : MonoBehaviour
             inputs = new float[width * height * 3];
             outputs = new float[1 * 6 * anchors];
         } catch (System.Exception e) {
-            debugText.text = "AI Init Error: " + e.Message;
+            if(debugText) debugText.text = "AI Init Error: " + e.Message;
         }
 
+        // Setup UI
         scanButton.onClick.AddListener(OnScanClicked);
-        debugText.text = "Enter Subject Code and Scan.";
-        detectionBox.gameObject.SetActive(false);
-        if(downloadBar) downloadBar.gameObject.SetActive(false);
+        if(debugText) debugText.text = "Enter Subject & Scan.";
+        if(detectionBox) detectionBox.gameObject.SetActive(false);
         if(selectionPanel) selectionPanel.SetActive(true);
     }
 
+    // Called when you click "SCAN"
     void OnScanClicked()
     {
         string subject = subjectInput.text.ToUpper().Trim();
 
         if (string.IsNullOrEmpty(subject)) {
-            debugText.text = "Error: Please enter a Subject Code.";
+            if(debugText) debugText.text = "Error: Please enter a Subject Code.";
             return;
         }
 
         targetSubject = subject;
-        selectionPanel.SetActive(false); 
-        debugText.text = "Searching for Blackboard...";
+        
+        // Hide inputs and start looking
+        if(selectionPanel) selectionPanel.SetActive(false); 
+        if(debugText) debugText.text = "Scanning for Blackboard...";
+        
         StartCoroutine(CaptureAndRun());
     }
 
-    // --- 1. THE AI LOOP ---
+    // --- THE AI LOOP ---
     IEnumerator CaptureAndRun()
     {
         yield return new WaitForEndOfFrame();
 
+        // 1. Capture Screen
         Texture2D screenTex = new Texture2D(Screen.width, Screen.height, TextureFormat.RGB24, false);
         screenTex.ReadPixels(new Rect(0, 0, Screen.width, Screen.height), 0, 0);
         screenTex.Apply();
 
-        // Image Processing...
+        // 2. Prepare Data for AI
         Color[] pixels = screenTex.GetPixels();
         float xRatio = (float)screenTex.width / width;
         float yRatio = (float)screenTex.height / height;
@@ -106,10 +107,12 @@ public class BlackboardDetector : MonoBehaviour
         }
         Destroy(screenTex);
 
+        // 3. Run AI Inference
         interpreter.SetInputTensorData(0, inputs);
         interpreter.Invoke();
         interpreter.GetOutputTensorData(0, outputs);
 
+        // 4. Process Results
         float maxScore = 0f;
         int bestIndex = -1;
         for (int i = 0; i < anchors; i++) {
@@ -117,112 +120,39 @@ public class BlackboardDetector : MonoBehaviour
             if (score > maxScore) { maxScore = score; bestIndex = i; }
         }
 
-        if (maxScore > 0.6f) {
+        // 5. CHECK RESULT
+        if (maxScore > 0.6f) { // 60% Confidence Threshold
             float cx = outputs[0 * anchors + bestIndex];
             float cy = outputs[1 * anchors + bestIndex];
             Vector2 screenPos = new Vector2(cx * Screen.width, cy * Screen.height);
             
-            detectionBox.gameObject.SetActive(true);
-            detectionBox.anchoredPosition = screenPos; 
-
-            debugText.text = "Board Found. Fetching Cloud Data...";
-            
-            // START THE NEW FETCH ROUTINE
-            StartCoroutine(FetchAndDownloadRoutine(screenPos));
-        } else {
-            debugText.text = "No Blackboard found. Try moving closer.";
-        }
-    }
-
-    // --- 2. THE NEW DYNAMIC FETCHER ---
-    IEnumerator FetchAndDownloadRoutine(Vector2 screenPos)
-    {
-        // A. Ask Google Script for the link
-        string fetchUrl = googleScriptUrl + "?subject=" + targetSubject;
-        string downloadLink = "";
-        
-        using (UnityWebRequest www = UnityWebRequest.Get(fetchUrl))
-        {
-            yield return www.SendWebRequest();
-            
-            if (www.result != UnityWebRequest.Result.Success) {
-                debugText.text = "API Error: " + www.error;
-                yield break;
-            }
-            
-            downloadLink = www.downloadHandler.text;
-            
-            // Check if script returned an error message
-            if (downloadLink.StartsWith("Error")) {
-                debugText.text = downloadLink; // e.g., "Error: Folder not found"
-                yield break;
-            }
-        }
-
-        // B. Download the actual GLB file
-        Debug.Log("Downloading from: " + downloadLink);
-        debugText.text = "Downloading Model...";
-        
-        Vector3 spawnPos; Quaternion spawnRot;
-        CalculateSpawnPose(screenPos, out spawnPos, out spawnRot);
-
-        if(downloadBar) { downloadBar.gameObject.SetActive(true); downloadBar.value = 0; }
-
-        using (UnityWebRequest webRequest = UnityWebRequest.Get(downloadLink))
-        {
-            var operation = webRequest.SendWebRequest();
-            while (!operation.isDone) {
-                if(downloadBar) downloadBar.value = operation.progress;
-                yield return null;
+            // Show the Green Detection Box
+            if(detectionBox) {
+                detectionBox.gameObject.SetActive(true);
+                detectionBox.anchoredPosition = screenPos; 
             }
 
-            if (webRequest.result != UnityWebRequest.Result.Success) {
-                debugText.text = "Download Failed (404/500)";
+            if(debugText) debugText.text = "Board Found! Checking Database...";
+            
+            // === CRITICAL FIX: CALL MONGO MANAGER ===
+            // We hand off the subject to MongoManager. It handles filtering (S1 vs S7) and downloading.
+            if (mongoManager != null) {
+                mongoManager.TriggerSearchFromAI(targetSubject);
+                HideVisuals(); // Clean up AR planes
             } else {
-                debugText.text = "Processing Model...";
-                if(downloadBar) downloadBar.value = 1.0f;
-                LoadBytesIntoScene(webRequest.downloadHandler.data, spawnPos, spawnRot);
+                Debug.LogError("MongoManager not assigned in Inspector!");
+                if(debugText) debugText.text = "Error: MongoManager missing!";
             }
-        }
-    }
-
-    async void LoadBytesIntoScene(byte[] data, Vector3 pos, Quaternion rot)
-    {
-        GameObject cloudObject = new GameObject("CloudModel");
-        cloudObject.transform.position = pos;
-        cloudObject.transform.rotation = rot;
-        cloudObject.transform.Rotate(0, 180, 0); 
-        cloudObject.transform.localScale = Vector3.one * 0.05f; 
-        cloudObject.AddComponent<ARAnchor>();
-
-        var gltf = new GltfImport();
-        bool success = await gltf.LoadGltfBinary(data); 
-
-        if (success) {
-            await gltf.InstantiateMainSceneAsync(cloudObject.transform);
-            HideVisuals();
-            debugText.text = "Success! " + targetSubject + " Loaded.";
-            if(downloadBar) downloadBar.gameObject.SetActive(false);
+            
         } else {
-            debugText.text = "Model Parsing Failed.";
+            // AI Failed to find board
+            if(debugText) debugText.text = "No Board Found. Move Closer & Rescan.";
+            // Bring UI back so user can try again
+            if(selectionPanel) selectionPanel.SetActive(true);
         }
     }
 
-    // (Helper functions CalculateSpawnPose, HideVisuals, OnDestroy remain the same)
-    void CalculateSpawnPose(Vector2 screenPos, out Vector3 pos, out Quaternion rot)
-    {
-        List<ARRaycastHit> hits = new List<ARRaycastHit>();
-        if (raycastManager.Raycast(screenPos, hits, TrackableType.PlaneWithinPolygon)) {
-            Pose wallPose = hits[0].pose;
-            Vector3 dir = (arCamera.transform.position - wallPose.position).normalized;
-            pos = wallPose.position + (dir * 0.3f);
-            rot = Quaternion.LookRotation(dir);
-        } else {
-            pos = arCamera.transform.position + (arCamera.transform.forward * 0.5f);
-            rot = Quaternion.LookRotation(arCamera.transform.forward);
-        }
-    }
-
+    // Helper to hide AR dots/planes once we find the board
     void HideVisuals()
     {
         var planeMan = FindObjectOfType<ARPlaneManager>();

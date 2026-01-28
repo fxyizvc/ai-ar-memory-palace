@@ -6,36 +6,30 @@ using TMPro;
 public class MongoManager : MonoBehaviour
 {
     [Header("Cloud Settings")]
-    public string backendUrl = "https://YOUR-PROJECT-NAME.vercel.app/api/find"; 
+    public string backendUrl = "https://YOUR-PROJECT-NAME.vercel.app/api/find"; // PASTE VERCEL URL HERE
 
     [Header("UI References")]
     public TextMeshProUGUI statusText;     
-    public TMP_InputField subjectInput;    
+    public TMP_InputField subjectInput;
+    public TMP_Dropdown branchDropdown;    
+    public TMP_Dropdown semesterDropdown;  
     public GameObject pdfButton;           
 
-    // CHANGE 1: No more 'static'. These reset every time the app opens.
-    private bool isInsideCollege = false;
+    // State Variables
+    public bool isInsideCollege = false; // Made public so we can see it in Inspector
     private string currentCollege = "";
     private string currentPdfUrl = "";     
 
     void Start()
     {
-        // CHANGE 2: Bulletproof Button Finder
-        // If the button link is broken, we find it manually by name
+        // 1. AUTO-FIND BUTTON
         if (pdfButton == null)
         {
-            pdfButton = GameObject.Find("PDF Button");
+            pdfButton = GameObject.Find("PDF Button"); 
+            if(pdfButton == null) pdfButton = GameObject.Find("PDFButton");
         }
 
-        // Force hide at start
-        if(pdfButton != null) 
-        {
-            pdfButton.SetActive(false); 
-        }
-        else 
-        {
-            if(statusText) statusText.text = "Warning: PDF Button not found!";
-        }
+        if(pdfButton != null) pdfButton.SetActive(false); 
 
         if(statusText) statusText.text = "Initializing GPS...";
     }
@@ -47,9 +41,79 @@ public class MongoManager : MonoBehaviour
 
     IEnumerator CheckLocationRoutine(float lat, float lon)
     {
-        // Cache Buster is still good to keep
         string url = $"{backendUrl}?lat={lat}&lon={lon}&t={System.DateTime.Now.Ticks}";
         
+        using (UnityWebRequest request = UnityWebRequest.Get(url))
+        {
+            yield return request.SendWebRequest();
+            if (request.result == UnityWebRequest.Result.Success)
+            {
+                string json = request.downloadHandler.text;
+                
+                // === GPS ENFORCEMENT LOGIC ===
+                if (json.Contains("\"found\":true"))
+                {
+                    isInsideCollege = true;
+                    currentCollege = ExtractValue(json, "college_name");
+                    if(statusText) statusText.text = $"Connected: {currentCollege}\nReady to Scan.";
+                }
+                else
+                {
+                    isInsideCollege = false;
+                    currentCollege = "";
+                    if(statusText) statusText.text = "Location Restriction:\nYou are not inside a registered college.";
+                }
+            }
+        }
+    }
+
+    // --- TRIGGER 1: MANUAL SCAN ---
+    public void OnScanButtonClicked()
+    {
+        // 1. STRICT ENFORCEMENT
+        if (!isInsideCollege)
+        {
+            if(statusText) statusText.text = "Restricted: You must be at a college to scan.";
+            return; // STOP HERE
+        }
+
+        string subjectCode = subjectInput.text;
+        if (string.IsNullOrEmpty(subjectCode)) return;
+
+        string selectedBranch = "All";
+        string selectedSem = "All";
+        if (branchDropdown != null) selectedBranch = branchDropdown.options[branchDropdown.value].text;
+        if (semesterDropdown != null) selectedSem = semesterDropdown.options[semesterDropdown.value].text;
+
+        StartCoroutine(FetchAssetRoutine(subjectCode, selectedBranch, selectedSem));
+    }
+
+    // --- TRIGGER 2: AI SCAN ---
+    public void TriggerSearchFromAI(string subjectCode)
+    {
+        // 1. STRICT ENFORCEMENT
+        if (!isInsideCollege)
+        {
+            if(statusText) statusText.text = "Board Detected, but you are not at College.\nAccess Denied.";
+            return; // STOP HERE
+        }
+
+        string selectedBranch = "All";
+        string selectedSem = "All";
+        if (branchDropdown != null) selectedBranch = branchDropdown.options[branchDropdown.value].text;
+        if (semesterDropdown != null) selectedSem = semesterDropdown.options[semesterDropdown.value].text;
+
+        StartCoroutine(FetchAssetRoutine(subjectCode, selectedBranch, selectedSem));
+    }
+
+    IEnumerator FetchAssetRoutine(string subject, string branch, string sem)
+    {
+        if(statusText) statusText.text = $"Searching {subject}...";
+        if(pdfButton != null) pdfButton.SetActive(false); 
+
+        string url = $"{backendUrl}?subject={subject}&branch={branch}&semester={sem}&t={System.DateTime.Now.Ticks}";
+        Debug.Log("SENT URL: " + url);
+
         using (UnityWebRequest request = UnityWebRequest.Get(url))
         {
             yield return request.SendWebRequest();
@@ -60,84 +124,37 @@ public class MongoManager : MonoBehaviour
                 
                 if (json.Contains("\"found\":true"))
                 {
-                    isInsideCollege = true;
-                    currentCollege = ExtractValue(json, "college_name");
-                    // Only update text if it's a new connection or different
-                    if(statusText) statusText.text = $"Connected: {currentCollege}\nReady to Scan.";
-                }
-                else
-                {
-                    isInsideCollege = false;
-                    // Optional: You can comment this out if it spams too much
-                    // string dist = ExtractValue(json, "distance").Replace("}", "").Trim();
-                    // if(statusText) statusText.text = $"Not in college.\nDist: {dist}m";
-                }
-            }
-        }
-    }
-
-    public void OnScanButtonClicked()
-    {
-        // Remove the blocking check for debugging if you are testing at home
-        // if (!isInsideCollege) { ... }
-
-        string subjectCode = subjectInput.text;
-        if (string.IsNullOrEmpty(subjectCode))
-        {
-            if(statusText) statusText.text = "Please enter a subject code.";
-            return;
-        }
-
-        StartCoroutine(FetchAssetRoutine(subjectCode));
-    }
-
-    IEnumerator FetchAssetRoutine(string subject)
-    {
-        if(statusText) statusText.text = "Searching Database...";
-        if(pdfButton) pdfButton.SetActive(false); 
-
-        string url = $"{backendUrl}?subject={subject}&t={System.DateTime.Now.Ticks}";
-
-        using (UnityWebRequest request = UnityWebRequest.Get(url))
-        {
-            yield return request.SendWebRequest();
-
-            if (request.result == UnityWebRequest.Result.Success)
-            {
-                string json = request.downloadHandler.text;
-                Debug.Log("JSON: " + json); // Debugging
-
-                if (json.Contains("\"found\":true"))
-                {
                     string filename = ExtractValue(json, "filename");
                     currentPdfUrl = ExtractValue(json, "pdf_url"); 
-                    string glbUrl = ExtractValue(json, "glb_url");
+                    string rawGlbUrl = ExtractValue(json, "glb_url");
+                    
+                    string debugMsg = $"Found: {filename}";
 
-                    if(statusText) statusText.text = $"Found: {filename}";
+                    // FIX 1: 3D Model
+                    if (!string.IsNullOrEmpty(rawGlbUrl))
+                    {
+                        string directGlbLink = FixGoogleDriveLink(rawGlbUrl);
+                        if (ModelDownloader.Instance != null)
+                            ModelDownloader.Instance.Download3DModel(directGlbLink);
+                    }
 
-                    // CHANGE 3: Explicit Debugging on Screen
+                    // FIX 2: PDF Button
                     if (!string.IsNullOrEmpty(currentPdfUrl))
                     {
-                        if (pdfButton != null)
-                        {
-                            pdfButton.SetActive(true);
-                            // Verify it actually turned on
-                            if(statusText) statusText.text += "\n(Notes Available)";
-                        }
-                        else
-                        {
-                            if(statusText) statusText.text += "\nError: Button Missing!";
-                        }
+                        debugMsg += "\n(PDF Available)";
+                        if (pdfButton != null) pdfButton.SetActive(true);
                     }
+                    
+                    if(statusText) statusText.text = debugMsg;
                 }
                 else
                 {
-                    if(statusText) statusText.text = "Subject not found.";
+                    if(statusText) statusText.text = $"No match in {branch}-{sem}.";
                 }
             }
             else
             {
-                if(statusText) statusText.text = "Network Error: " + request.error;
+                if(statusText) statusText.text = "Network Error.";
             }
         }
     }
@@ -147,32 +164,30 @@ public class MongoManager : MonoBehaviour
         if (!string.IsNullOrEmpty(currentPdfUrl))
         {
             if(statusText) statusText.text = "Opening Browser...";
-            OpenInChrome(currentPdfUrl);
+            OpenInChrome(FixGoogleDriveLink(currentPdfUrl));
         }
     }
 
     public void OpenInChrome(string url)
     {
-        #if UNITY_ANDROID && !UNITY_EDITOR
-            try
+        Application.OpenURL(url);
+    }
+
+    string FixGoogleDriveLink(string url)
+    {
+        if (url.Contains("drive.google.com") && url.Contains("/file/d/"))
+        {
+            try 
             {
-                using (AndroidJavaClass unityPlayer = new AndroidJavaClass("com.unity3d.player.UnityPlayer"))
-                using (AndroidJavaObject currentActivity = unityPlayer.GetStatic<AndroidJavaObject>("currentActivity"))
-                using (AndroidJavaObject intent = new AndroidJavaObject("android.content.Intent", "android.intent.action.VIEW", 
-                       new AndroidJavaObject("android.net.Uri").CallStatic<AndroidJavaObject>("parse", url)))
-                {
-                    intent.Call<AndroidJavaObject>("setPackage", "com.android.chrome");
-                    intent.Call<AndroidJavaObject>("addFlags", 0x10000000); 
-                    currentActivity.Call("startActivity", intent);
-                }
+                int start = url.IndexOf("/d/") + 3;
+                int end = url.IndexOf("/view", start);
+                if (end == -1) end = url.IndexOf("/", start);
+                string id = url.Substring(start, end - start);
+                return "https://drive.google.com/uc?export=download&id=" + id;
             }
-            catch (System.Exception e)
-            {
-                Application.OpenURL(url);
-            }
-        #else
-            Application.OpenURL(url);
-        #endif
+            catch { return url; }
+        }
+        return url;
     }
 
     string ExtractValue(string json, string key)
