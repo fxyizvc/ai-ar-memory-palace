@@ -55,6 +55,7 @@
     <Compile Include="Assets\ModelDownloader.cs" />
     <Compile Include="Assets\Settings\Project Configuration\SceneTemplate_RotateCube.cs" />
     <Compile Include="Assets\MongoManager.cs" />
+    <Compile Include="Assets\SyllabusManager.cs" />
     <Compile Include="Assets\Rotator.cs" />
     <Compile Include="Assets\MobileARTemplateAssets\Scripts\ARPlaneMeshVisualizerFader.cs" />
   </ItemGroup>

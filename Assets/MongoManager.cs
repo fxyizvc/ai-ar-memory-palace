@@ -6,23 +6,23 @@ using TMPro;
 public class MongoManager : MonoBehaviour
 {
     [Header("Cloud Settings")]
-    public string backendUrl = "https://YOUR-PROJECT-NAME.vercel.app/api/find"; // PASTE VERCEL URL HERE
+    public string backendUrl = "https://YOUR-PROJECT-NAME.vercel.app/api/find"; 
 
     [Header("UI References")]
     public TextMeshProUGUI statusText;     
-    public TMP_InputField subjectInput;
+    public TMP_Dropdown subjectDropdown;   // <--- NEW: Connected to SyllabusManager
     public TMP_Dropdown branchDropdown;    
     public TMP_Dropdown semesterDropdown;  
     public GameObject pdfButton;           
 
     // State Variables
-    public bool isInsideCollege = false; // Made public so we can see it in Inspector
+    public bool isInsideCollege = false;
     private string currentCollege = "";
     private string currentPdfUrl = "";     
 
     void Start()
     {
-        // 1. AUTO-FIND BUTTON
+        // Auto-find PDF Button if missing
         if (pdfButton == null)
         {
             pdfButton = GameObject.Find("PDF Button"); 
@@ -50,7 +50,6 @@ public class MongoManager : MonoBehaviour
             {
                 string json = request.downloadHandler.text;
                 
-                // === GPS ENFORCEMENT LOGIC ===
                 if (json.Contains("\"found\":true"))
                 {
                     isInsideCollege = true;
@@ -61,7 +60,7 @@ public class MongoManager : MonoBehaviour
                 {
                     isInsideCollege = false;
                     currentCollege = "";
-                    if(statusText) statusText.text = "Location Restriction:\nYou are not inside a registered college.";
+                    if(statusText) statusText.text = "Restricted: You are not inside a registered college.";
                 }
             }
         }
@@ -70,40 +69,47 @@ public class MongoManager : MonoBehaviour
     // --- TRIGGER 1: MANUAL SCAN ---
     public void OnScanButtonClicked()
     {
-        // 1. STRICT ENFORCEMENT
-        if (!isInsideCollege)
-        {
-            if(statusText) statusText.text = "Restricted: You must be at a college to scan.";
-            return; // STOP HERE
-        }
-
-        string subjectCode = subjectInput.text;
-        if (string.IsNullOrEmpty(subjectCode)) return;
-
-        string selectedBranch = "All";
-        string selectedSem = "All";
-        if (branchDropdown != null) selectedBranch = branchDropdown.options[branchDropdown.value].text;
-        if (semesterDropdown != null) selectedSem = semesterDropdown.options[semesterDropdown.value].text;
-
-        StartCoroutine(FetchAssetRoutine(subjectCode, selectedBranch, selectedSem));
+        PerformSearch();
     }
 
     // --- TRIGGER 2: AI SCAN ---
-    public void TriggerSearchFromAI(string subjectCode)
+    public void TriggerSearchFromAI()
     {
-        // 1. STRICT ENFORCEMENT
+        PerformSearch();
+    }
+
+    // --- SHARED SEARCH LOGIC ---
+    private void PerformSearch()
+    {
+        // 1. GPS Check
         if (!isInsideCollege)
         {
-            if(statusText) statusText.text = "Board Detected, but you are not at College.\nAccess Denied.";
-            return; // STOP HERE
+            if(statusText) statusText.text = "Access Denied: You must be at college to scan.";
+            return;
         }
 
+        // 2. Read Values from Dropdowns
         string selectedBranch = "All";
         string selectedSem = "All";
+        string selectedSubject = "";
+
         if (branchDropdown != null) selectedBranch = branchDropdown.options[branchDropdown.value].text;
         if (semesterDropdown != null) selectedSem = semesterDropdown.options[semesterDropdown.value].text;
+        
+        // 3. Read the Smart Subject Dropdown
+        if (subjectDropdown != null && subjectDropdown.options.Count > 0)
+        {
+            selectedSubject = subjectDropdown.options[subjectDropdown.value].text;
+        }
 
-        StartCoroutine(FetchAssetRoutine(subjectCode, selectedBranch, selectedSem));
+        // 4. Validate
+        if (selectedSubject == "No Subjects Found" || string.IsNullOrEmpty(selectedSubject))
+        {
+            if(statusText) statusText.text = "Error: Please select a valid subject.";
+            return;
+        }
+
+        StartCoroutine(FetchAssetRoutine(selectedSubject, selectedBranch, selectedSem));
     }
 
     IEnumerator FetchAssetRoutine(string subject, string branch, string sem)
@@ -121,7 +127,8 @@ public class MongoManager : MonoBehaviour
             if (request.result == UnityWebRequest.Result.Success)
             {
                 string json = request.downloadHandler.text;
-                
+                Debug.Log("RESPONSE: " + json);
+
                 if (json.Contains("\"found\":true"))
                 {
                     string filename = ExtractValue(json, "filename");
@@ -130,7 +137,7 @@ public class MongoManager : MonoBehaviour
                     
                     string debugMsg = $"Found: {filename}";
 
-                    // FIX 1: 3D Model
+                    // 1. Download 3D Model (with Link Fix)
                     if (!string.IsNullOrEmpty(rawGlbUrl))
                     {
                         string directGlbLink = FixGoogleDriveLink(rawGlbUrl);
@@ -138,7 +145,7 @@ public class MongoManager : MonoBehaviour
                             ModelDownloader.Instance.Download3DModel(directGlbLink);
                     }
 
-                    // FIX 2: PDF Button
+                    // 2. Show PDF Button
                     if (!string.IsNullOrEmpty(currentPdfUrl))
                     {
                         debugMsg += "\n(PDF Available)";
@@ -149,7 +156,7 @@ public class MongoManager : MonoBehaviour
                 }
                 else
                 {
-                    if(statusText) statusText.text = $"No match in {branch}-{sem}.";
+                    if(statusText) statusText.text = $"No match found for {subject}.";
                 }
             }
             else
@@ -168,10 +175,7 @@ public class MongoManager : MonoBehaviour
         }
     }
 
-    public void OpenInChrome(string url)
-    {
-        Application.OpenURL(url);
-    }
+    public void OpenInChrome(string url) { Application.OpenURL(url); }
 
     string FixGoogleDriveLink(string url)
     {
