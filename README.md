@@ -91,13 +91,17 @@ The system operates in a strictly **validation-first pipeline**:
 
 ## 📸 Screenshots
 
-> *Add your screenshots here*
+1. **Smart Dropdown Selection (Branch / Sem / Subject)**  
+   <img src="https://github.com/user-attachments/assets/a99fbc29-1fb8-490f-b3a9-545cb58c42eb" width="220"/>
 
-1. Smart Dropdown Selection (Branch/Sem/Subject)
-2. GPS "Connected" State
-3. AI Detection & AR Augmentation
+2. **GPS "Connected" State**  
+   <img src="https://github.com/user-attachments/assets/0a2b6682-5b79-4f04-82aa-a1b43e826541" width="220"/>
+
+3. **AI Detection & AR Augmentation**  
+   <img src="https://github.com/user-attachments/assets/c2975876-9d47-44cd-9814-a3732ac99910" width="220"/>
 
 ---
+
 
 ## 🚦 Getting Started
 
