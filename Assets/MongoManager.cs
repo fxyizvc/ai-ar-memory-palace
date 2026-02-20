@@ -94,7 +94,7 @@ public class MongoManager : MonoBehaviour
     }
 
     // --- TRIGGER 1: MANUAL SCAN ---
-    public void OnScanButtonClicked() { PerformSearch(); }
+    // public void OnScanButtonClicked() { PerformSearch(); }
 
     // --- TRIGGER 2: AI SCAN ---
     public void TriggerSearchFromAI() { PerformSearch(); }
