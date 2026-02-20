@@ -3,22 +3,49 @@ using UnityEngine.Networking;
 using System.Collections;
 using TMPro;
 
+// --- Helper classes to parse the JSON Array from Vercel ---
+[System.Serializable]
+public class AssetData {
+    public string filename;
+    public string glb_url;
+    public string pdf_url;
+    public string branch;
+    public string semester;
+}
+
+[System.Serializable]
+public class AssetResponse {
+    public bool found;
+    public string mode;
+    public string error;
+    public AssetData[] assets;
+}
+// -----------------------------------------------------------
+
 public class MongoManager : MonoBehaviour
 {
     [Header("Cloud Settings")]
-    public string backendUrl = "https://YOUR-PROJECT-NAME.vercel.app/api/find"; 
+    public string backendUrl = "https://YOUR-PROJECT-NAME.vercel.app/api/find"; // KEEP YOUR VERCEL URL HERE
 
     [Header("UI References")]
     public TextMeshProUGUI statusText;     
-    public TMP_Dropdown subjectDropdown;   // <--- NEW: Connected to SyllabusManager
+    public TMP_Dropdown subjectDropdown;   
     public TMP_Dropdown branchDropdown;    
     public TMP_Dropdown semesterDropdown;  
+
+    [Header("Carousel UI")]
     public GameObject pdfButton;           
+    public GameObject nextButton;          // <-- NEW: Right Arrow Button
+    public GameObject prevButton;          // <-- NEW: Left Arrow Button
+    public TextMeshProUGUI counterText;    // <-- NEW: Text to show "1 / 3"
 
     // State Variables
     public bool isInsideCollege = false;
     private string currentCollege = "";
-    private string currentPdfUrl = "";     
+    
+    // Carousel State
+    private AssetData[] currentAssets;     
+    private int currentIndex = 0;          
 
     void Start()
     {
@@ -29,7 +56,7 @@ public class MongoManager : MonoBehaviour
             if(pdfButton == null) pdfButton = GameObject.Find("PDFButton");
         }
 
-        if(pdfButton != null) pdfButton.SetActive(false); 
+        HideCarouselUI();
 
         if(statusText) statusText.text = "Initializing GPS...";
     }
@@ -67,16 +94,10 @@ public class MongoManager : MonoBehaviour
     }
 
     // --- TRIGGER 1: MANUAL SCAN ---
-    public void OnScanButtonClicked()
-    {
-        PerformSearch();
-    }
+    public void OnScanButtonClicked() { PerformSearch(); }
 
     // --- TRIGGER 2: AI SCAN ---
-    public void TriggerSearchFromAI()
-    {
-        PerformSearch();
-    }
+    public void TriggerSearchFromAI() { PerformSearch(); }
 
     // --- SHARED SEARCH LOGIC ---
     private void PerformSearch()
@@ -115,7 +136,7 @@ public class MongoManager : MonoBehaviour
     IEnumerator FetchAssetRoutine(string subject, string branch, string sem)
     {
         if(statusText) statusText.text = $"Searching {subject}...";
-        if(pdfButton != null) pdfButton.SetActive(false); 
+        HideCarouselUI(); 
 
         string url = $"{backendUrl}?subject={subject}&branch={branch}&semester={sem}&t={System.DateTime.Now.Ticks}";
         Debug.Log("SENT URL: " + url);
@@ -129,30 +150,14 @@ public class MongoManager : MonoBehaviour
                 string json = request.downloadHandler.text;
                 Debug.Log("RESPONSE: " + json);
 
-                if (json.Contains("\"found\":true"))
+                // Parse the JSON Array using Unity's JsonUtility
+                AssetResponse response = JsonUtility.FromJson<AssetResponse>(json);
+
+                if (response != null && response.found && response.assets != null && response.assets.Length > 0)
                 {
-                    string filename = ExtractValue(json, "filename");
-                    currentPdfUrl = ExtractValue(json, "pdf_url"); 
-                    string rawGlbUrl = ExtractValue(json, "glb_url");
-                    
-                    string debugMsg = $"Found: {filename}";
-
-                    // 1. Download 3D Model (with Link Fix)
-                    if (!string.IsNullOrEmpty(rawGlbUrl))
-                    {
-                        string directGlbLink = FixGoogleDriveLink(rawGlbUrl);
-                        if (ModelDownloader.Instance != null)
-                            ModelDownloader.Instance.Download3DModel(directGlbLink);
-                    }
-
-                    // 2. Show PDF Button
-                    if (!string.IsNullOrEmpty(currentPdfUrl))
-                    {
-                        debugMsg += "\n(PDF Available)";
-                        if (pdfButton != null) pdfButton.SetActive(true);
-                    }
-                    
-                    if(statusText) statusText.text = debugMsg;
+                    currentAssets = response.assets;
+                    currentIndex = 0; // Start at the first module
+                    LoadCurrentAsset();
                 }
                 else
                 {
@@ -166,13 +171,82 @@ public class MongoManager : MonoBehaviour
         }
     }
 
+    // --- CAROUSEL LOGIC ---
+
+    void LoadCurrentAsset()
+    {
+        if (currentAssets == null || currentAssets.Length == 0) return;
+
+        AssetData data = currentAssets[currentIndex];
+        string debugMsg = $"Found: {data.filename}";
+        
+        // 1. Update Counter Text (e.g., "1 / 3")
+        if (counterText != null) 
+            counterText.text = $"{currentIndex + 1} / {currentAssets.Length}";
+
+        // 2. Download 3D Model
+        if (!string.IsNullOrEmpty(data.glb_url))
+        {
+            string directGlbLink = FixGoogleDriveLink(data.glb_url);
+            if (ModelDownloader.Instance != null)
+                ModelDownloader.Instance.Download3DModel(directGlbLink);
+        }
+
+        // 3. Enable/Disable UI Elements
+        if (!string.IsNullOrEmpty(data.pdf_url))
+        {
+            debugMsg += "\n(PDF Available)";
+            if (pdfButton != null) pdfButton.SetActive(true);
+        }
+        else
+        {
+            if (pdfButton != null) pdfButton.SetActive(false);
+        }
+
+        // Show Next/Prev arrows ONLY if there is more than 1 file
+        bool showArrows = currentAssets.Length > 1;
+        if (nextButton != null) nextButton.SetActive(showArrows);
+        if (prevButton != null) prevButton.SetActive(showArrows);
+        if (counterText != null) counterText.gameObject.SetActive(showArrows);
+
+        if(statusText) statusText.text = debugMsg;
+    }
+
+    public void OnNextClicked()
+    {
+        if (currentAssets == null || currentAssets.Length == 0) return;
+        currentIndex++;
+        if (currentIndex >= currentAssets.Length) currentIndex = 0; // Loop back to start
+        LoadCurrentAsset();
+    }
+
+    public void OnPrevClicked()
+    {
+        if (currentAssets == null || currentAssets.Length == 0) return;
+        currentIndex--;
+        if (currentIndex < 0) currentIndex = currentAssets.Length - 1; // Loop back to end
+        LoadCurrentAsset();
+    }
+
     public void OnPdfButtonClicked()
     {
-        if (!string.IsNullOrEmpty(currentPdfUrl))
+        if (currentAssets != null && currentAssets.Length > 0)
         {
-            if(statusText) statusText.text = "Opening Browser...";
-            OpenInChrome(FixGoogleDriveLink(currentPdfUrl));
+            string currentPdf = currentAssets[currentIndex].pdf_url;
+            if (!string.IsNullOrEmpty(currentPdf))
+            {
+                if(statusText) statusText.text = "Opening Browser...";
+                OpenInChrome(FixGoogleDriveLink(currentPdf));
+            }
         }
+    }
+
+    void HideCarouselUI()
+    {
+        if(pdfButton != null) pdfButton.SetActive(false);
+        if(nextButton != null) nextButton.SetActive(false);
+        if(prevButton != null) prevButton.SetActive(false);
+        if(counterText != null) counterText.gameObject.SetActive(false);
     }
 
     public void OpenInChrome(string url) { Application.OpenURL(url); }
@@ -194,6 +268,7 @@ public class MongoManager : MonoBehaviour
         return url;
     }
 
+    // Still used for extracting the college name from the GPS check JSON
     string ExtractValue(string json, string key)
     {
         string search = "\"" + key + "\":\"";
